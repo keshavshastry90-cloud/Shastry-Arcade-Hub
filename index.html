@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shastry Arcade - Ultimate Gaming Portal</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js for 3D Arcade Visuals & Parallax Background -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Google Fonts: Orbitron & Rajdhani for Cyber Arcade feel -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            arcade: {
+              bg: '#05070e',
+              card: '#0d1322',
+              border: '#1e293b',
+              neonCyan: '#00f3ff',
+              neonPink: '#ff007f',
+              neonYellow: '#ffea00',
+              neonPurple: '#9d4edd',
+              neonGreen: '#00ff66'
+            }
+          },
+          fontFamily: {
+            arcade: ['Orbitron', 'sans-serif'],
+            cyber: ['Rajdhani', 'sans-serif'],
+            mono: ['"Share Tech Mono"', 'monospace']
+          },
+          boxShadow: {
+            'neon-cyan': '0 0 15px rgba(0, 243, 255, 0.4), 0 0 35px rgba(0, 243, 255, 0.2)',
+            'neon-pink': '0 0 15px rgba(255, 0, 127, 0.5), 0 0 35px rgba(255, 0, 127, 0.25)',
+            'neon-yellow': '0 0 15px rgba(255, 234, 0, 0.4)',
+            'cabinet': 'inset 0 0 30px rgba(0,0,0,0.9), 0 20px 50px rgba(0,0,0,0.95), 0 0 20px rgba(0,243,255,0.2)'
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #05070e;
+      color: #e2e8f0;
+      user-select: none;
+      perspective: 1200px;
+    }
+
+    /* 3D Canvas Background Behind All Elements */
+    #three-bg-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.75;
+    }
+
+    /* 3D Tilt Card Styles */
+    .tilt-card-container {
+      perspective: 1000px;
+      transform-style: preserve-3d;
+    }
+
+    .tilt-card {
+      transition: transform 0.15s ease-out, box-shadow 0.25s ease-out, border-color 0.25s ease-out;
+      transform-style: preserve-3d;
+      will-change: transform;
+    }
+
+    .tilt-content-layer {
+      transform: translateZ(35px);
+      transform-style: preserve-3d;
+    }
+
+    .tilt-glare {
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.25) 0%, transparent 60%);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      z-index: 25;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090c15;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 4px;
+      border: 1px solid #00f3ff44;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #00f3ff88;
+    }
+
+    .cabinet-screen-bezel {
+      box-shadow: inset 0 0 50px rgba(0,0,0,0.98), 0 0 35px rgba(0, 243, 255, 0.3);
+    }
+  </style>
+</head>
+<body class="font-cyber min-h-screen relative overflow-x-hidden antialiased flex flex-col">
+
+  <!-- Interactive Three.js 3D Retro Wave & Grid Background -->
+  <canvas id="three-bg-canvas"></canvas>
+
+  <!-- Player Live Arcade Camera Floating HUD (Draggable / Minimizable) -->
+  <div id="player-cam-container" class="fixed bottom-4 right-4 z-40 w-44 sm:w-56 rounded-2xl bg-slate-950/95 border-2 border-arcade-neonCyan shadow-neon-cyan overflow-hidden backdrop-blur-md transition-all duration-300">
+    <!-- Camera Header -->
+    <div class="px-2.5 py-1.5 bg-slate-900 border-b border-arcade-border flex items-center justify-between text-[11px] font-mono">
+      <div class="flex items-center gap-1.5">
+        <span id="cam-status-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+        <span id="cam-status-text" class="text-white font-bold tracking-wider">PLAYER 1 CAM</span>
+      </div>
+      <div class="flex items-center gap-1">
+        <button id="cam-toggle-stream-btn" class="text-slate-400 hover:text-arcade-neonCyan p-0.5" title="Toggle Camera">
+          <i data-lucide="video" class="w-3.5 h-3.5"></i>
+        </button>
+        <button id="cam-minimize-btn" class="text-slate-400 hover:text-white p-0.5" title="Minimize">
+          <i data-lucide="minus" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Live Video & Overlay Reticle -->
+    <div id="cam-body" class="relative aspect-video bg-black flex items-center justify-center overflow-hidden">
+      <video id="webcam-feed" autoplay playsinline muted class="w-full h-full object-cover -scale-x-100 hidden"></video>
+
+      <!-- Reticle Graphic -->
+      <div class="absolute inset-0 pointer-events-none border border-arcade-neonCyan/30 m-1 rounded flex items-center justify-center">
+        <div class="w-6 h-6 border border-arcade-neonPink/40 rounded-full animate-ping opacity-25"></div>
+        <span class="absolute top-1 left-1 text-[8px] font-mono text-arcade-neonCyan/80 tracking-tighter">LIVE_REC</span>
+      </div>
+
+      <!-- Permission Prompt Overlay if not granted yet -->
+      <div id="cam-request-overlay" class="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-2 text-center">
+        <i data-lucide="camera" class="w-5 h-5 text-arcade-neonCyan mb-1"></i>
+        <p class="text-[10px] font-mono text-slate-300 mb-2 leading-tight">Enable Camera for Arcade Slicer & HUD</p>
+        <button id="cam-activate-btn" class="px-2 py-1 rounded bg-arcade-neonCyan text-slate-950 text-[10px] font-arcade font-bold hover:bg-white shadow">
+          ALLOW CAM
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Navigation & Global Views Status Bar -->
+  <header class="sticky top-0 z-40 border-b border-arcade-border/80 bg-arcade-bg/90 backdrop-blur-md px-4 lg:px-8 py-3.5 transition-all">
+    <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      
+      <!-- Logo Branding -->
+      <div class="flex items-center gap-3">
+        <div class="relative p-2.5 rounded-xl bg-gradient-to-br from-arcade-neonPink/25 to-arcade-neonCyan/25 border border-arcade-neonCyan/50 shadow-neon-cyan flex items-center justify-center transform hover:rotate-6 transition-transform">
+          <i data-lucide="gamepad-2" class="w-7 h-7 text-arcade-neonCyan animate-pulse"></i>
+        </div>
+        <div>
+          <h1 class="font-arcade text-xl sm:text-3xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-arcade-neonCyan via-white to-arcade-neonPink">
+            SHASTRY ARCADE
+          </h1>
+          <p class="text-xs font-mono text-slate-400 flex items-center gap-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            <span>SORTED BY VIEWS • PLAYABLE DIRECTLY ON THIS SITE</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Realtime Global Total Views Counter -->
+      <div class="flex items-center gap-3 px-4 py-2 rounded-xl bg-slate-900/90 border border-arcade-neonCyan/40 shadow-neon-cyan">
+        <div class="p-1.5 rounded-lg bg-arcade-neonCyan/15 text-arcade-neonCyan">
+          <i data-lucide="eye" class="w-5 h-5"></i>
+        </div>
+        <div class="text-left">
+          <div class="text-[10px] font-mono tracking-widest text-slate-400 uppercase leading-none">TOTAL VIEWS</div>
+          <div id="total-views-counter" class="font-arcade text-lg sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-arcade-neonCyan to-white leading-tight">
+            0
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Arcade Cabinets Grid (with Interactive 3D Tilt) -->
+  <main class="relative z-10 max-w-7xl mx-auto px-4 lg:px-8 py-8 flex-grow w-full">
+    <div id="games-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-7">
+      <!-- Dynamic Game Cards populated via JS -->
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="relative z-10 border-t border-arcade-border bg-slate-950/90 backdrop-blur px-4 py-6 mt-8">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-mono text-slate-400">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-arcade-neonCyan"></span>
+        <span class="text-white font-bold tracking-wider">SHASTRY ARCADE</span>
+        <span>• ALL GAMES HOSTED & PLAYABLE IN-SITE</span>
+      </div>
+      <div>
+        <button onclick="window.scrollTo({top: 0, behavior: 'smooth'})" class="text-arcade-neonCyan hover:underline flex items-center gap-1">
+          <i data-lucide="arrow-up" class="w-3.5 h-3.5"></i> BACK TO TOP
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Retro In-App Arcade Modal Player -->
+  <div id="arcade-modal" class="fixed inset-0 z-50 bg-black/95 backdrop-blur-md hidden flex items-center justify-center p-2 sm:p-4 md:p-6 transition-all duration-300">
+    <div class="relative w-full max-w-7xl h-[95vh] bg-arcade-card rounded-2xl border-2 border-arcade-neonCyan shadow-2xl flex flex-col overflow-hidden">
+      
+      <!-- Modal Header / Marquee Bar -->
+      <div class="bg-slate-950 border-b border-arcade-border px-4 py-3 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <span class="p-1.5 rounded-md bg-arcade-neonCyan/20 text-arcade-neonCyan">
+            <i data-lucide="gamepad-2" class="w-5 h-5"></i>
+          </span>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 id="modal-game-title" class="font-arcade text-sm sm:text-base font-bold text-white tracking-wide">
+                GAME RUNNER
+              </h3>
+              <!-- In-Modal View Counter Badge -->
+              <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-arcade-neonCyan/40 text-arcade-neonCyan flex items-center gap-1">
+                <i data-lucide="eye" class="w-3 h-3"></i> <span id="modal-views-count">0</span> VIEWS
+              </span>
+            </div>
+            <p id="modal-game-url-label" class="font-mono text-[10px] text-slate-400 truncate max-w-[200px] sm:max-w-md"></p>
+          </div>
+        </div>
+
+        <!-- Controls: Refresh, Fullscreen, Close -->
+        <div class="flex items-center gap-2">
+          <button id="modal-refresh-btn" class="p-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-white" title="Reload Game">
+            <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+          </button>
+
+          <button id="modal-fullscreen-btn" class="p-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-white" title="Toggle Fullscreen">
+            <i data-lucide="maximize-2" class="w-4 h-4"></i>
+          </button>
+
+          <button id="modal-close-btn" class="p-2 rounded-lg bg-arcade-neonPink/20 border border-arcade-neonPink text-arcade-neonPink hover:bg-arcade-neonPink hover:text-white transition-colors" title="Exit Cabinet">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Iframe Container / Cabinet Screen -->
+      <div class="relative flex-grow bg-black flex items-center justify-center overflow-hidden cabinet-screen-bezel" id="iframe-wrapper">
+        <!-- Loading Spinner -->
+        <div id="modal-loader" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 z-10">
+          <div class="w-12 h-12 border-4 border-arcade-neonCyan border-t-transparent rounded-full animate-spin"></div>
+          <p class="font-arcade text-xs text-arcade-neonCyan tracking-widest mt-4 animate-pulse">LAUNCHING GAME IN ARCADE CABINET...</p>
+        </div>
+        
+        <!-- Game Embedded Frame with permissions for Camera (Gesture Slicer), Gamepad, Audio, and Fullscreen -->
+        <iframe 
+          id="game-iframe" 
+          src="" 
+          class="w-full h-full border-0" 
+          allow="accelerometer; autoplay; camera; microphone; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; gamepad; fullscreen"
+          allowfullscreen>
+        </iframe>
+      </div>
+
+      <!-- Modal Bottom Bar Info -->
+      <div class="bg-slate-950 border-t border-arcade-border px-4 py-2 flex flex-wrap items-center justify-between text-[11px] font-mono text-slate-400">
+        <div class="flex items-center gap-2">
+          <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span>LIVE IN-BROWSER GAMEPLAY ACTIVE</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <span>Press ESC or the X button to return to Arcade Hub</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Audio Synthesizer Engine (Procedural Web Audio API) -->
+  <script>
+    class ArcadeAudioEngine {
+      constructor() {
+        this.ctx = null;
+      }
+
+      initContext() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) {
+            this.ctx = new AudioContext();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      playHover() {
+        try {
+          this.initContext();
+          if (!this.ctx) return;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(520, this.ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(1040, this.ctx.currentTime + 0.04);
+
+          gain.gain.setValueAtTime(0.02, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.04);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.04);
+        } catch (e) {}
+      }
+
+      playCoin() {
+        try {
+          this.initContext();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+          
+          const osc1 = this.ctx.createOscillator();
+          const gain1 = this.ctx.createGain();
+          osc1.type = 'sine';
+          osc1.frequency.setValueAtTime(987.77, now);
+          osc1.frequency.setValueAtTime(1318.51, now + 0.08);
+
+          gain1.gain.setValueAtTime(0.12, now);
+          gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+          osc1.connect(gain1);
+          gain1.connect(this.ctx.destination);
+
+          osc1.start(now);
+          osc1.stop(now + 0.35);
+        } catch (e) {}
+      }
+
+      playSelect() {
+        try {
+          this.initContext();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(600, now);
+          osc.frequency.exponentialRampToValueAtTime(150, now + 0.12);
+
+          gain.gain.setValueAtTime(0.06, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc.start(now);
+          osc.stop(now + 0.12);
+        } catch (e) {}
+      }
+    }
+
+    const soundEngine = new ArcadeAudioEngine();
+  </script>
+
+  <!-- Interactive Three.js 3D Retro Wave & Parallax Geometry -->
+  <script>
+    let scene, camera, renderer, gridPlane, cubeGroup;
+    let mouseX = 0, mouseY = 0;
+    let targetX = 0, targetY = 0;
+
+    function initThree3D() {
+      const canvas = document.getElementById('three-bg-canvas');
+      if (!canvas) return;
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 5, 25);
+      camera.lookAt(0, 0, 0);
+
+      renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      // 3D Neon Horizon Grid
+      const gridHelper = new THREE.GridHelper(120, 60, 0x00f3ff, 0x9d4edd);
+      gridHelper.position.y = -6;
+      gridHelper.material.opacity = 0.45;
+      gridHelper.material.transparent = true;
+      scene.add(gridHelper);
+      gridPlane = gridHelper;
+
+      // Group of Floating Neon 3D Wireframe Polyhedrons
+      cubeGroup = new THREE.Group();
+      scene.add(cubeGroup);
+
+      const geometries = [
+        new THREE.BoxGeometry(2.5, 2.5, 2.5),
+        new THREE.IcosahedronGeometry(2, 0),
+        new THREE.OctahedronGeometry(2.2, 0),
+        new THREE.TorusGeometry(1.8, 0.4, 8, 24)
+      ];
+
+      const colors = [0x00f3ff, 0xff007f, 0xffea00, 0x9d4edd, 0x00ff66];
+
+      for (let i = 0; i < 18; i++) {
+        const geom = geometries[i % geometries.length];
+        const color = colors[i % colors.length];
+        const wireframeMaterial = new THREE.MeshBasicMaterial({
+          color: color,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.38
+        });
+
+        const mesh = new THREE.Mesh(geom, wireframeMaterial);
+        mesh.position.x = (Math.random() - 0.5) * 60;
+        mesh.position.y = (Math.random() - 0.2) * 20;
+        mesh.position.z = (Math.random() - 0.5) * 40 - 10;
+        mesh.rotation.x = Math.random() * Math.PI;
+        mesh.rotation.y = Math.random() * Math.PI;
+
+        mesh.userData = {
+          rotSpeedX: (Math.random() - 0.5) * 0.015,
+          rotSpeedY: (Math.random() - 0.5) * 0.015,
+          floatSpeed: 0.008 + Math.random() * 0.01,
+          initY: mesh.position.y
+        };
+
+        cubeGroup.add(mesh);
+      }
+
+      // Parallax Mouse Tracker
+      window.addEventListener('mousemove', (e) => {
+        mouseX = (e.clientX - window.innerWidth / 2) * 0.001;
+        mouseY = (e.clientY - window.innerHeight / 2) * 0.001;
+      });
+
+      // Window Resize Listener
+      window.addEventListener('resize', onWindowResize);
+
+      animateThree();
+    }
+
+    function onWindowResize() {
+      if (!camera || !renderer) return;
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    let clock = new THREE.Clock();
+
+    function animateThree() {
+      requestAnimationFrame(animateThree);
+      const elapsedTime = clock.getElapsedTime();
+
+      // Camera smooth parallax
+      targetX += (mouseX * 8 - targetX) * 0.05;
+      targetY += (-mouseY * 4 - targetY) * 0.05;
+      camera.position.x = targetX;
+      camera.position.y = 5 + targetY;
+      camera.lookAt(0, 0, 0);
+
+      // Grid dynamic forward scroll illusion
+      if (gridPlane) {
+        gridPlane.position.z = (elapsedTime * 4) % 2;
+      }
+
+      // Float and rotate 3D geometries
+      if (cubeGroup) {
+        cubeGroup.children.forEach((mesh) => {
+          mesh.rotation.x += mesh.userData.rotSpeedX;
+          mesh.rotation.y += mesh.userData.rotSpeedY;
+          mesh.position.y = mesh.userData.initY + Math.sin(elapsedTime * 2 + mesh.position.x) * 0.8;
+        });
+      }
+
+      renderer.render(scene, camera);
+    }
+  </script>
+
+  <!-- Arcade Games Catalog Data & Core Logic -->
+  <script>
+    // Initial Base Views for Each Game
+    const INITIAL_VIEWS = {
+      'stell-titans-3d': 3420,
+      'cress': 1890,
+      'neuro-clash': 2560,
+      'cyber-pong-overdrive': 4120,
+      'cyber-force-3d': 3780,
+      'cyber-glide': 2240,
+      'hand-gesture-slicer': 5310,
+      'space-conquest': 2950,
+      'gamecfm': 3110
+    };
+
+    // Load or initialize persistent views state
+    let gameViews = JSON.parse(localStorage.getItem('shastry_arcade_views') || 'null');
+    if (!gameViews) {
+      gameViews = { ...INITIAL_VIEWS };
+      localStorage.setItem('shastry_arcade_views', JSON.stringify(gameViews));
+    }
+
+    // Complete registry of the user's 9 games
+    const ARCADE_GAMES = [
+      {
+        id: 'stell-titans-3d',
+        title: 'Steel Titans 3D',
+        url: 'https://mycreateforme-dotcom.github.io/Stell-Titans-3D/',
+        icon: 'shield-alert'
+      },
+      {
+        id: 'cress',
+        title: 'Cress',
+        url: 'https://mycreateforme-dotcom.github.io/cress/',
+        icon: 'target'
+      },
+      {
+        id: 'neuro-clash',
+        title: 'Neuro Clash',
+        url: 'https://mycreateforme-dotcom.github.io/Nuero-Clash/',
+        icon: 'cpu'
+      },
+      {
+        id: 'cyber-pong-overdrive',
+        title: 'Cyber Pong Overdrive',
+        url: 'https://mycreateforme-dotcom.github.io/CYBER-PONG-OVERDRIVE/',
+        icon: 'zap'
+      },
+      {
+        id: 'cyber-force-3d',
+        title: 'Cyber Force 3D',
+        url: 'https://mycreateforme-dotcom.github.io/CYBER-FORCE3D/',
+        icon: 'crosshair'
+      },
+      {
+        id: 'cyber-glide',
+        title: 'Cyber Glide',
+        url: 'https://mycreateforme-dotcom.github.io/CYBER-GLIDE/',
+        icon: 'fast-forward'
+      },
+      {
+        id: 'hand-gesture-slicer',
+        title: 'Hand Gesture Slicer',
+        url: 'https://mycreateforme-dotcom.github.io/Hand-Gesture-Slicer/',
+        icon: 'scissors'
+      },
+      {
+        id: 'space-conquest',
+        title: 'Space Conquest',
+        url: 'https://mycreateforme-dotcom.github.io/Space-Conquest/',
+        icon: 'rocket'
+      },
+      {
+        id: 'gamecfm',
+        title: 'GameCFM Multiverse',
+        url: 'https://mycreateforme-dotcom.github.io/GameCFM/',
+        icon: 'layers'
+      }
+    ];
+
+    // Camera Stream Management
+    let localStream = null;
+
+    async function setupCamera() {
+      const video = document.getElementById('webcam-feed');
+      const overlay = document.getElementById('cam-request-overlay');
+      const statusDot = document.getElementById('cam-status-dot');
+      const statusText = document.getElementById('cam-status-text');
+
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error("getUserMedia not supported");
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+          audio: false
+        });
+
+        localStream = stream;
+        video.srcObject = stream;
+        video.classList.remove('hidden');
+        if (overlay) overlay.classList.add('hidden');
+        if (statusDot) {
+          statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+        }
+        if (statusText) statusText.textContent = 'PLAYER 1 ONLINE';
+      } catch (err) {
+        console.warn("Camera access denied or unavailable:", err);
+        if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-rose-500';
+        if (statusText) statusText.textContent = 'CAM OFFLINE';
+      }
+    }
+
+    // Toggle minimize camera HUD
+    function setupCameraHUDControls() {
+      const minBtn = document.getElementById('cam-minimize-btn');
+      const camBody = document.getElementById('cam-body');
+      const toggleStreamBtn = document.getElementById('cam-toggle-stream-btn');
+      const activateBtn = document.getElementById('cam-activate-btn');
+
+      if (activateBtn) {
+        activateBtn.addEventListener('click', () => {
+          soundEngine.playSelect();
+          setupCamera();
+        });
+      }
+
+      if (minBtn && camBody) {
+        minBtn.addEventListener('click', () => {
+          camBody.classList.toggle('hidden');
+        });
+      }
+
+      if (toggleStreamBtn) {
+        toggleStreamBtn.addEventListener('click', () => {
+          if (localStream) {
+            const tracks = localStream.getVideoTracks();
+            tracks.forEach(track => track.enabled = !track.enabled);
+            toggleStreamBtn.classList.toggle('text-rose-400');
+          } else {
+            setupCamera();
+          }
+        });
+      }
+
+      // Automatically request camera access on user interaction or page load
+      window.addEventListener('load', () => {
+        // Small delay so page is fully painted
+        setTimeout(() => {
+          setupCamera();
+        }, 500);
+      });
+    }
+
+    // Calculate & Update Global Total Views
+    function updateTotalViewsCounter() {
+      const totalViews = Object.values(gameViews).reduce((acc, curr) => acc + curr, 0);
+      const counterEl = document.getElementById('total-views-counter');
+      if (counterEl) {
+        counterEl.textContent = totalViews.toLocaleString();
+      }
+    }
+
+    // Increment views as soon as Play button is pressed and immediately resort descending
+    function incrementGameViews(gameId) {
+      if (gameViews[gameId] !== undefined) {
+        gameViews[gameId] += 1;
+      } else {
+        gameViews[gameId] = 1;
+      }
+      localStorage.setItem('shastry_arcade_views', JSON.stringify(gameViews));
+      updateTotalViewsCounter();
+      renderGames(); // Re-sorts and updates ranking descending
+    }
+
+    // Initialize DOM & Event Handlers
+    document.addEventListener('DOMContentLoaded', () => {
+      // Initialize Three.js 3D background
+      initThree3D();
+
+      // Camera HUD Setup
+      setupCameraHUDControls();
+
+      // Render views & games catalog in descending order
+      updateTotalViewsCounter();
+      renderGames();
+
+      // Modal Controls
+      setupModalControls();
+    });
+
+    // Render Game Cards in DESCENDING ORDER by View Count
+    function renderGames() {
+      const grid = document.getElementById('games-grid');
+      grid.innerHTML = '';
+
+      // Sort descending: highest views first
+      const sortedGames = [...ARCADE_GAMES].sort((a, b) => {
+        const viewsA = gameViews[a.id] || 0;
+        const viewsB = gameViews[b.id] || 0;
+        return viewsB - viewsA;
+      });
+
+      sortedGames.forEach((game, index) => {
+        const rawViews = gameViews[game.id] || 0;
+        const viewsCount = rawViews.toLocaleString();
+        const rank = index + 1;
+        
+        // Custom color accent for #1, #2, #3 ranks
+        let rankBadgeClass = "bg-slate-900 border-slate-700 text-slate-300";
+        if (rank === 1) rankBadgeClass = "bg-amber-400/20 border-amber-400 text-amber-300 font-black shadow-[0_0_10px_rgba(251,191,36,0.5)]";
+        else if (rank === 2) rankBadgeClass = "bg-slate-300/20 border-slate-300 text-slate-100 font-bold";
+        else if (rank === 3) rankBadgeClass = "bg-amber-700/20 border-amber-600 text-amber-400 font-bold";
+
+        const container = document.createElement('div');
+        container.className = "tilt-card-container transition-all duration-300";
+
+        const card = document.createElement('div');
+        card.className = `tilt-card relative rounded-2xl bg-arcade-card/90 border ${rank === 1 ? 'border-amber-400/80 shadow-[0_0_20px_rgba(251,191,36,0.25)]' : 'border-arcade-border hover:border-arcade-neonCyan'} p-5 flex flex-col justify-between shadow-xl hover:shadow-neon-cyan`;
+        
+        card.innerHTML = `
+          <!-- 3D Specular Glare Layer -->
+          <div class="tilt-glare"></div>
+
+          <!-- Top Badge & Views Counter -->
+          <div class="tilt-content-layer">
+            <div class="flex items-center justify-between gap-2 mb-3">
+              <span class="px-2.5 py-0.5 rounded text-[11px] font-mono tracking-wider uppercase border flex items-center gap-1.5 ${rankBadgeClass}">
+                <i data-lucide="trophy" class="w-3 h-3 ${rank === 1 ? 'text-amber-400' : 'text-slate-400'}"></i>
+                RANK #${rank}
+              </span>
+              
+              <!-- Realtime View Count -->
+              <span class="font-mono text-xs text-arcade-neonCyan bg-slate-900/90 border border-arcade-neonCyan/40 px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm">
+                <i data-lucide="eye" class="w-3.5 h-3.5 text-arcade-neonCyan"></i>
+                <span class="font-bold text-white">${viewsCount}</span>
+                <span class="text-[10px] text-slate-400">VIEWS</span>
+              </span>
+            </div>
+
+            <!-- Game Visual 3D Header -->
+            <div class="relative h-32 rounded-xl overflow-hidden bg-gradient-to-br from-slate-900 to-black border border-slate-800/80 mb-4 flex items-center justify-center p-4">
+              <div class="absolute inset-0 opacity-20 bg-[radial-gradient(#00f3ff_1px,transparent_1px)] [background-size:12px_12px]"></div>
+              <div class="p-4 rounded-2xl bg-slate-950/80 border border-white/10 text-arcade-neonCyan group-hover:scale-110 group-hover:border-arcade-neonCyan transition-all shadow-lg">
+                <i data-lucide="${game.icon}" class="w-10 h-10"></i>
+              </div>
+            </div>
+
+            <!-- Title -->
+            <h3 class="font-arcade text-lg font-bold text-white group-hover:text-arcade-neonCyan transition-colors tracking-wide mb-4 text-center">
+              ${game.title}
+            </h3>
+          </div>
+
+          <!-- Play Button: Increments View Immediately, Resorts Descending, and Opens Game On This Website -->
+          <div class="tilt-content-layer pt-2">
+            <button 
+              onclick="launchGameById('${game.id}')"
+              class="w-full py-3 rounded-xl bg-gradient-to-r from-arcade-neonCyan via-cyan-400 to-arcade-neonCyan hover:from-cyan-300 hover:to-cyan-200 text-slate-950 font-arcade text-xs font-black tracking-widest shadow-lg hover:shadow-neon-cyan flex items-center justify-center gap-2 transition-all active:scale-95">
+              <i data-lucide="play" class="w-4 h-4 fill-slate-950"></i> PLAY NOW
+            </button>
+          </div>
+        `;
+
+        // Attach Interactive 3D Tilt Event Listeners
+        attach3DTilt(card);
+
+        container.appendChild(card);
+        grid.appendChild(container);
+      });
+
+      lucide.createIcons();
+    }
+
+    // 3D Card Tilt with Specular Glare Math
+    function attach3DTilt(card) {
+      const glare = card.querySelector('.tilt-glare');
+
+      card.addEventListener('mouseenter', () => {
+        soundEngine.playHover();
+        if (glare) glare.style.opacity = '1';
+      });
+
+      card.addEventListener('mousemove', (e) => {
+        const rect = card.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+
+        const rotateX = ((y - centerY) / centerY) * -12;
+        const rotateY = ((x - centerX) / centerX) * 12;
+
+        card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+
+        if (glare) {
+          glare.style.background = `radial-gradient(circle at ${(x / rect.width) * 100}% ${(y / rect.height) * 100}%, rgba(255, 255, 255, 0.22) 0%, transparent 60%)`;
+        }
+      });
+
+      card.addEventListener('mouseleave', () => {
+        card.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
+        if (glare) glare.style.opacity = '0';
+      });
+    }
+
+    // Modal Control Setup
+    function setupModalControls() {
+      const modal = document.getElementById('arcade-modal');
+      const closeBtn = document.getElementById('modal-close-btn');
+      const refreshBtn = document.getElementById('modal-refresh-btn');
+      const fullscreenBtn = document.getElementById('modal-fullscreen-btn');
+      const iframe = document.getElementById('game-iframe');
+      const loader = document.getElementById('modal-loader');
+
+      closeBtn.addEventListener('click', closeModal);
+
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          closeModal();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+          closeModal();
+        }
+      });
+
+      refreshBtn.addEventListener('click', () => {
+        soundEngine.playSelect();
+        loader.classList.remove('hidden');
+        iframe.src = iframe.src;
+      });
+
+      fullscreenBtn.addEventListener('click', () => {
+        soundEngine.playSelect();
+        const wrapper = document.getElementById('iframe-wrapper');
+        if (!document.fullscreenElement) {
+          wrapper.requestFullscreen().catch(err => {
+            console.warn(`Fullscreen error: ${err.message}`);
+          });
+        } else {
+          document.exitFullscreen();
+        }
+      });
+
+      iframe.addEventListener('load', () => {
+        loader.classList.add('hidden');
+      });
+    }
+
+    // Launch Game by ID: Immediately increments views and launches game inside site
+    function launchGameById(gameId) {
+      const game = ARCADE_GAMES.find(g => g.id === gameId);
+      if (game) {
+        // Immediate view count increment on Play button click
+        incrementGameViews(gameId);
+        openGameModal(game);
+      }
+    }
+
+    // Open In-App Cabinet Modal
+    function openGameModal(game) {
+      soundEngine.playCoin();
+
+      const modal = document.getElementById('arcade-modal');
+      const iframe = document.getElementById('game-iframe');
+      const title = document.getElementById('modal-game-title');
+      const urlLabel = document.getElementById('modal-game-url-label');
+      const loader = document.getElementById('modal-loader');
+      const viewsCount = document.getElementById('modal-views-count');
+
+      title.textContent = game.title.toUpperCase();
+      urlLabel.textContent = game.url;
+      if (viewsCount) {
+        viewsCount.textContent = (gameViews[game.id] || 0).toLocaleString();
+      }
+
+      loader.classList.remove('hidden');
+      iframe.src = game.url;
+
+      modal.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+
+    // Close Modal
+    function closeModal() {
+      soundEngine.playSelect();
+      const modal = document.getElementById('arcade-modal');
+      const iframe = document.getElementById('game-iframe');
+      iframe.src = '';
+      modal.classList.add('hidden');
+      document.body.style.overflow = '';
+    }
+  </script>
+</body>
+</html>
